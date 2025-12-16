@@ -1,0 +1,69 @@
+# .github/workflows/ci.yaml
+name: Continuous Integration (CI)
+
+on:
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  code-quality:
+    runs-on: ubuntu-latest
+    
+    steps:
+    # 1. Checkout code
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    # 2. Setup Python
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    # 3. Install dependencies
+    - name: Install Python dependencies
+      run: |
+        pip install pylint
+        pip install editorconfig-checker
+    
+    # 4. Run pylint for consumer
+    - name: Run pylint on consumer
+      run: |
+        if [ -d "consumer" ]; then
+          pylint consumer/ || echo "Pylint completed with findings"
+        else
+          echo "Consumer directory not found"
+        fi
+    
+    # 5. Run pylint for producer
+    - name: Run pylint on producer
+      run: |
+        if [ -d "producer" ]; then
+          pylint producer/ || echo "Pylint completed with findings"
+        else
+          echo "Producer directory not found"
+        fi
+    
+    # 6. Check EditorConfig compliance
+    - name: Check EditorConfig
+      run: |
+        editorconfig-checker . || echo "EditorConfig check completed"
+    
+    # 7. Build test (check if Dockerfiles exist and are valid)
+    - name: Test Docker build for Consumer
+      run: |
+        if [ -f "consumer/Dockerfile" ]; then
+          echo "Testing Consumer Dockerfile..."
+          docker build -t consumer-test ./consumer/ --no-cache
+        else
+          echo "Consumer Dockerfile not found"
+        fi
+    
+    - name: Test Docker build for Producer
+      run: |
+        if [ -f "producer/Dockerfile" ]; then
+          echo "Testing Producer Dockerfile..."
+          docker build -t producer-test ./producer/ --no-cache
+        else
+          echo "Producer Dockerfile not found"
+        fi
