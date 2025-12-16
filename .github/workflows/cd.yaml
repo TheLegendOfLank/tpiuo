@@ -1,4 +1,3 @@
-# .github/workflows/cd.yaml
 name: Continuous Deployment (CD)
 
 on:
@@ -7,15 +6,14 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT }}
-  REGION: europe-west1  # ili tvoj region (npr. us-central1)
-  CONTAINER_REGISTRY: ${{ secrets.GCP_PROJECT }}-docker.pkg.dev/${{ secrets.GCP_PROJECT }}/lab2-reddit
-
+  REGION: "europe-central2"
+  
 jobs:
   deploy:
     runs-on: ubuntu-latest
     
     steps:
-    # 1. Checkout code
+    # 1. Checkout koda
     - name: Checkout repository
       uses: actions/checkout@v3
     
@@ -24,85 +22,77 @@ jobs:
       uses: google-github-actions/auth@v1
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
-        project_id: ${{ secrets.GCP_PROJECT }}
     
-    # 3. Setup Google Cloud SDK
-    - name: Set up Google Cloud SDK
+    # 3. Set up Cloud SDK
+    - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
       with:
         project_id: ${{ secrets.GCP_PROJECT }}
     
-    # 4. Configure Docker for Artifact Registry
-    - name: Configure Docker
+    # 4. Configure Docker
+    - name: Configure Docker for Artifact Registry
       run: |
-        gcloud auth configure-docker $REGION-docker.pkg.dev --quiet
+        gcloud auth configure-docker $REGION-docker.pkg.dev
     
-    # 5. Configure environment from .env.yaml (ako postoji)
-    - name: Extract environment variables
+    # 5. Extract project ID from .env.yaml
+    - name: Extract project ID
       id: extract_env
       run: |
-        # Provjeri postoji li .env.yaml
-        if [ -f ".env.yaml" ]; then
-          echo "Using .env.yaml for configuration"
-        else
-          echo ".env.yaml not found, using default values"
-        fi
+        PROJECT_ID=$(grep 'project_id:' .env.yaml | cut -d ' ' -f2 | tr -d '"' | tr -d "'")
+        echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
     
     # ----- CONSUMER DEPLOYMENT -----
-    - name: Build and Push Consumer Docker image
-      if: exists('consumer/Dockerfile')
-      run: |
-        cd consumer
-        docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/lab2-reddit/consumer:latest .
-        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/lab2-reddit/consumer:latest
-        echo "✅ Consumer image pushed to Artifact Registry"
     
-    - name: Deploy Consumer to Cloud Run
-      if: exists('consumer/Dockerfile')
+    # 6. Build Consumer Docker image
+    - name: Build Consumer Docker image
       run: |
-        gcloud run deploy reddit-consumer \
-          --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/lab2-reddit/consumer:latest \
+        cd reddit-app/reddit-consumer
+        docker build -t $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/consumer:latest .
+    
+    # 7. Push Consumer Docker image
+    - name: Push Consumer Docker image
+      run: |
+        docker push $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/consumer:latest
+    
+    # 8. Deploy Consumer to Cloud Run
+    - name: Deploy Consumer to Cloud Run
+      run: |
+        gcloud run deploy reddit-consumer-service \
+          --image $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/consumer:latest \
+          --region $REGION \
           --platform managed \
-          --region ${{ env.REGION }} \
           --allow-unauthenticated \
           --memory 512Mi \
           --cpu 1 \
-          --min-instances 0 \
-          --max-instances 3 \
-          --timeout 300s
-        echo "✅ Consumer deployed to Cloud Run"
+          --max-instances 5
     
     # ----- PRODUCER DEPLOYMENT -----
-    - name: Build and Push Producer Docker image
-      if: exists('producer/Dockerfile')
-      run: |
-        cd producer
-        docker build -t ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/lab2-reddit/producer:latest .
-        docker push ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/lab2-reddit/producer:latest
-        echo "✅ Producer image pushed to Artifact Registry"
     
-    - name: Deploy Producer as Cloud Run Job
-      if: exists('producer/Dockerfile')
+    # 9. Build Producer Docker image
+    - name: Build Producer Docker image
       run: |
-        gcloud run jobs deploy reddit-producer \
-          --image ${{ env.REGION }}-docker.pkg.dev/${{ env.PROJECT_ID }}/lab2-reddit/producer:latest \
-          --region ${{ env.REGION }} \
-          --memory 512Mi \
-          --cpu 1 \
+        cd reddit-app/reddit-producer
+        docker build -t $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/producer:latest .
+    
+    # 10. Push Producer Docker image
+    - name: Push Producer Docker image
+      run: |
+        docker push $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/producer:latest
+    
+    # 11. Deploy Producer Job to Cloud Run
+    - name: Deploy Producer Job to Cloud Run
+      run: |
+        gcloud run jobs deploy reddit-producer-job \
+          --image $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/producer:latest \
+          --region $REGION \
           --max-retries 3 \
-          --task-timeout 600s
-        echo "✅ Producer deployed as Cloud Run Job"
+          --task-timeout 600s \
+          --memory 512Mi \
+          --cpu 1
     
+    # 12. Execute Producer Job
     - name: Execute Producer Job
-      if: exists('producer/Dockerfile')
       run: |
-        gcloud run jobs execute reddit-producer \
-          --region ${{ env.REGION }} \
+        gcloud run jobs execute reddit-producer-job \
+          --region $REGION \
           --wait
-        echo "✅ Producer job executed"
-    
-    # 6. Cleanup old images (opcionalno)
-    - name: Cleanup old Docker images
-      run: |
-        echo "Cleanup would run here (optional)"
-        # gcloud artifacts docker images delete old images
