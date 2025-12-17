@@ -7,48 +7,48 @@ on:
 jobs:
   lint-and-test:
     runs-on: ubuntu-latest
-    
+
     steps:
     # 1. Checkout koda
     - name: Checkout repository
       uses: actions/checkout@v3
-    
+
     # 2. Postavi Python
     - name: Set up Python
       uses: actions/setup-python@v4
       with:
         python-version: '3.11'
-    
+
     # 3. Install pylint
     - name: Install pylint
       run: |
         python -m pip install --upgrade pip
         pip install pylint
-    
+
     # 4. Run pylint na consumer kodu
     - name: Run pylint on consumer
       run: |
         pylint reddit-app/reddit-consumer/ || echo "Pylint check completed"
-    
+
     # 5. Run pylint na producer kodu
     - name: Run pylint on producer
       run: |
         pylint reddit-app/reddit-producer/ || echo "Pylint check completed"
-    
+
     # 6. Install EditorConfig checker
-    - name: Install EditorConfig checker
-      run: pip install editorconfig-checker
-    
+    - name: Install EditorConfig
+      run: pip install editorconfig
+
     # 7. Check EditorConfig compliance
     - name: Check EditorConfig
-      run: editorconfig-checker
-    
+      run: editorconfig-check .
+
     # 8. Build Docker images (test build)
     - name: Test build Consumer Docker image
       run: |
         cd reddit-app/reddit-consumer
         docker build -t consumer-test .
-    
+
     - name: Test build Producer Docker image
       run: |
         cd reddit-app/reddit-producer
