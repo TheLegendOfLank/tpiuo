@@ -6,54 +6,54 @@ on:
 
 env:
   PROJECT_ID: ${{ secrets.GCP_PROJECT }}
-  REGION: "europe-central2"
-  
+  REGION: "europe-west1"
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
-    
+
     steps:
     # 1. Checkout koda
     - name: Checkout repository
       uses: actions/checkout@v3
-    
+
     # 2. Authenticate to Google Cloud
     - name: Authenticate to GCP
       uses: google-github-actions/auth@v1
       with:
         credentials_json: ${{ secrets.GCP_SA_KEY }}
-    
+
     # 3. Set up Cloud SDK
     - name: Set up Cloud SDK
       uses: google-github-actions/setup-gcloud@v1
       with:
         project_id: ${{ secrets.GCP_PROJECT }}
-    
+
     # 4. Configure Docker
     - name: Configure Docker for Artifact Registry
       run: |
         gcloud auth configure-docker $REGION-docker.pkg.dev
-    
+
     # 5. Extract project ID from .env.yaml
     - name: Extract project ID
       id: extract_env
       run: |
         PROJECT_ID=$(grep 'project_id:' .env.yaml | cut -d ' ' -f2 | tr -d '"' | tr -d "'")
         echo "project_id=$PROJECT_ID" >> $GITHUB_OUTPUT
-    
+
     # ----- CONSUMER DEPLOYMENT -----
-    
+
     # 6. Build Consumer Docker image
     - name: Build Consumer Docker image
       run: |
         cd reddit-app/reddit-consumer
         docker build -t $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/consumer:latest .
-    
+
     # 7. Push Consumer Docker image
     - name: Push Consumer Docker image
       run: |
         docker push $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/consumer:latest
-    
+
     # 8. Deploy Consumer to Cloud Run
     - name: Deploy Consumer to Cloud Run
       run: |
@@ -65,20 +65,20 @@ jobs:
           --memory 512Mi \
           --cpu 1 \
           --max-instances 5
-    
+
     # ----- PRODUCER DEPLOYMENT -----
-    
+
     # 9. Build Producer Docker image
     - name: Build Producer Docker image
       run: |
         cd reddit-app/reddit-producer
         docker build -t $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/producer:latest .
-    
+
     # 10. Push Producer Docker image
     - name: Push Producer Docker image
       run: |
         docker push $REGION-docker.pkg.dev/${{ steps.extract_env.outputs.project_id }}/reddit/producer:latest
-    
+
     # 11. Deploy Producer Job to Cloud Run
     - name: Deploy Producer Job to Cloud Run
       run: |
@@ -89,7 +89,7 @@ jobs:
           --task-timeout 600s \
           --memory 512Mi \
           --cpu 1
-    
+
     # 12. Execute Producer Job
     - name: Execute Producer Job
       run: |
